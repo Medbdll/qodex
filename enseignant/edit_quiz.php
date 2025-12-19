@@ -2,53 +2,62 @@
 session_start();
 require_once '../config/database.php';
 
-// Must be authenticated
+// Security check
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
 }
 
-// Required GET parameters
-if (!isset($_GET['id']) || !isset($_GET['quiz_id'])) {
-    die("Missing parameters.");
+// Ensure quiz_id exists
+if (!isset($_GET['id'])) {
+    die("Quiz ID is missing.");
 }
 
-$question_id = (int) $_GET['id'];
-$quiz_id     = (int) $_GET['quiz_id'];
+$quiz_id = (int) $_GET['id'];
 
-// Fetch question
+// Fetch quiz
 $stmt = $pdo->prepare("
-    SELECT id, quiz_id, question, option1, option2, option3, option4, correct_option
-    FROM questions
-    WHERE id = ?
+    SELECT id, titre, description, categorie_id
+    FROM quizzes
+    WHERE id = ? AND enseignant_id = ?
 ");
-$stmt->execute([$question_id]);
-$question = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt->execute([$quiz_id, $_SESSION['user_id']]);
+$quiz = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$question) {
-    die("Question not found.");
+if (!$quiz) {
+    die("Quiz not found or unauthorized.");
 }
 
-// Handle POST update
+// Fetch categories
+$catStmt = $pdo->query("SELECT id, nom FROM categories ORDER BY nom ASC");
+$categories = $catStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch questions
+$qStmt = $pdo->prepare("
+    SELECT id, question, correct_option
+    FROM questions
+    WHERE quiz_id = ?
+");
+$qStmt->execute([$quiz_id]);
+$questions = $qStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Handle update form
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $stmtUpdate = $pdo->prepare("
-        UPDATE questions
-        SET question = ?, option1 = ?, option2 = ?, option3 = ?, option4 = ?, correct_option = ?, updated_at = NOW()
-        WHERE id = ?
+        UPDATE quizzes
+        SET titre = ?, description = ?, categorie_id = ?, updated_at = NOW()
+        WHERE id = ? AND enseignant_id = ?
     ");
-
     $stmtUpdate->execute([
-        $_POST['question'],
-        $_POST['option1'],
-        $_POST['option2'],
-        $_POST['option3'],
-        $_POST['option4'],
-        $_POST['correct'],
-        $question_id
+        $_POST['titre'],
+        $_POST['description'],
+        $_POST['categorie_id'],
+        $quiz_id,
+        $_SESSION['user_id']
     ]);
 
-    header("Location: edit_quiz.php?id=" . $quiz_id . "&updated_question=1");
+    header("Location: dashboard.php#quiz?updated=1");
     exit;
 }
 ?>
@@ -56,84 +65,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Modifier Question</title>
+    <title>Modifier Quiz</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 py-10">
 
-<div class="max-w-3xl mx-auto bg-white shadow-lg rounded-xl p-8">
+<div class="max-w-4xl mx-auto bg-white shadow-lg rounded-xl p-8">
 
-    <h2 class="text-3xl font-bold text-gray-800 mb-6">Modifier la Question</h2>
+    <h2 class="text-3xl font-bold text-gray-800 mb-6">Modifier Quiz</h2>
 
     <form action="" method="post" class="space-y-6">
 
         <div>
-            <label class="block font-semibold mb-1">Question *</label>
+            <label class="block font-semibold mb-1">Titre *</label>
             <input type="text"
-                   name="question"
+                   name="titre"
                    required
-                   value="<?= htmlspecialchars($question['question']) ?>"
+                   value="<?= htmlspecialchars($quiz['titre']) ?>"
                    class="w-full border rounded-lg px-4 py-2">
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-sm font-semibold mb-1">Option 1 *</label>
-                <input type="text"
-                       name="option1"
-                       required
-                       value="<?= htmlspecialchars($question['option1']) ?>"
-                       class="w-full border rounded-lg px-4 py-2">
-            </div>
-            <div>
-                <label class="block text-sm font-semibold mb-1">Option 2 *</label>
-                <input type="text"
-                       name="option2"
-                       required
-                       value="<?= htmlspecialchars($question['option2']) ?>"
-                       class="w-full border rounded-lg px-4 py-2">
-            </div>
-            <div>
-                <label class="block text-sm font-semibold mb-1">Option 3 *</label>
-                <input type="text"
-                       name="option3"
-                       required
-                       value="<?= htmlspecialchars($question['option3']) ?>"
-                       class="w-full border rounded-lg px-4 py-2">
-            </div>
-            <div>
-                <label class="block text-sm font-semibold mb-1">Option 4 *</label>
-                <input type="text"
-                       name="option4"
-                       required
-                       value="<?= htmlspecialchars($question['option4']) ?>"
-                       class="w-full border rounded-lg px-4 py-2">
-            </div>
+        <div>
+            <label class="block font-semibold mb-1">Description</label>
+            <textarea name="description" rows="3"
+                      class="w-full border rounded-lg px-4 py-2"><?= htmlspecialchars($quiz['description']) ?></textarea>
         </div>
 
         <div>
-            <label class="block font-semibold mb-1">Bonne réponse *</label>
-            <select name="correct" required class="w-full border rounded-lg px-4 py-2">
-                <option value="">Sélectionner</option>
-                <option value="1" <?= $question['correct_option'] == 1 ? 'selected' : '' ?>>Option 1</option>
-                <option value="2" <?= $question['correct_option'] == 2 ? 'selected' : '' ?>>Option 2</option>
-                <option value="3" <?= $question['correct_option'] == 3 ? 'selected' : '' ?>>Option 3</option>
-                <option value="4" <?= $question['correct_option'] == 4 ? 'selected' : '' ?>>Option 4</option>
+            <label class="block font-semibold mb-1">Catégorie *</label>
+            <select name="categorie_id" required class="w-full border rounded-lg px-4 py-2">
+                <option value="">-- Sélectionnez une catégorie --</option>
+                <?php foreach ($categories as $cat): ?>
+                    <option value="<?= $cat['id'] ?>"
+                        <?= ($cat['id'] == $quiz['categorie_id'] ? 'selected' : '') ?>>
+                        <?= htmlspecialchars($cat['nom']) ?>
+                    </option>
+                <?php endforeach; ?>
             </select>
         </div>
 
-        <div class="flex items-center gap-3">
-            <button type="submit"
-                    class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg">
-                Enregistrer
-            </button>
+        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg">
+            Enregistrer les modifications
+        </button>
 
-            <a href="edit_quiz.php?id=<?= $quiz_id ?>"
-               class="bg-gray-500 hover:bg-gray-600 text-white px-5 py-2 rounded-lg">
-                Annuler
-            </a>
-        </div>
+        <a href="dashboard.php#quiz"
+           class="bg-gray-500 hover:bg-gray-600 text-white px-5 py-2 rounded-lg ml-2">
+            Annuler
+        </a>
     </form>
+
+    <hr class="my-8">
+
+    <h3 class="text-2xl font-semibold text-gray-700 mb-4">Questions du quiz</h3>
+
+    <?php if (empty($questions)): ?>
+        <p class="text-gray-500">Aucune question pour le moment.</p>
+        <a href="add_question.php?quiz_id=<?= $quiz_id ?>"
+           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg inline-block mt-3">
+            Ajouter des questions
+        </a>
+    <?php else: ?>
+        <table class="min-w-full divide-y divide-gray-200 bg-white shadow rounded-lg">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Question</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bonne Réponse</th>
+                    <th class="px-6 py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <?php foreach ($questions as $q): ?>
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 text-sm text-gray-900"><?= htmlspecialchars($q['question']) ?></td>
+                    <td class="px-6 py-4 text-sm">
+                        Option <?= htmlspecialchars($q['correct_option']) ?>
+                    </td>
+                    <td class="px-6 py-4 text-right space-x-2">
+                        <a href="edit_question.php?id=<?= $q['id'] ?>" class="text-indigo-600 hover:text-indigo-700">
+                            Modifier
+                        </a>
+                        <a href="delete_question.php?id=<?= $q['id'] ?>&quiz_id=<?= $quiz_id ?>"
+                           onclick="return confirm('Supprimer cette question ?');"
+                           class="text-red-600 hover:text-red-700">
+                            Supprimer
+                        </a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <a href="add_question.php?quiz_id=<?= $quiz_id ?>"
+           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg inline-block mt-4">
+            Ajouter une nouvelle question
+        </a>
+    <?php endif; ?>
 
 </div>
 
