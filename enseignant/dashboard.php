@@ -12,18 +12,15 @@
 <body class="bg-gray-50">
 
 
-    <!-- ESPACE ENSEIGNANT -->
     <?php
-    // session_start();
     require_once '../config/database.php';
-    require_once '../includes/header.php'; 
-    require_once 'categorie.php'; 
-    require_once 'manage_quizzes.php'; 
-    require_once 'view_results.php'; 
+    require_once '../includes/header.php';
+    require_once 'categorie.php';
+    require_once 'manage_quizzes.php';
+    require_once 'view_results.php';
     ?>
     <div id="teacherSpace" class="pt-16">
 
-        <!-- Dashboard Section -->
         <div id="dashboard" class="section-content">
             <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -90,7 +87,6 @@
                 </div>
             </div>
         </div>
-
 
     </div>
 

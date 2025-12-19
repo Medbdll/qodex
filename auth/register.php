@@ -1,7 +1,6 @@
 <?php
 session_start();
 
-// Generate CSRF token if not exists
 if (!isset($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -9,10 +8,10 @@ if (!isset($_SESSION['csrf_token'])) {
 require_once '../config/database.php';
 
 $firstNameErr = $lastNameErr = $emailErr = $passwordErr = $confirmPasswordErr = $roleErr = '';
+$success = false;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    // CSRF Token Validation
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         die("Erreur CSRF: Requête invalide");
     }
@@ -24,17 +23,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $confirmPassword = $_POST["confirmPassword"];
     $role      = $_POST["role"];
 
-    // Validation des champs
     if ($firstName === '') {
         $firstNameErr = "Prénom est requis";
     } elseif (strlen($firstName) < 2) {
         $firstNameErr = "Le prénom doit contenir au moins 2 caractères";
+    } elseif (!preg_match("/^[a-zA-ZÀ-ÿ\s'-]+$/u", $firstName)) {
+        $firstNameErr = "Le prénom contient des caractères invalides";
     }
 
     if ($lastName === '') {
         $lastNameErr = "Nom est requis";
     } elseif (strlen($lastName) < 2) {
         $lastNameErr = "Le nom doit contenir au moins 2 caractères";
+    } elseif (!preg_match("/^[a-zA-ZÀ-ÿ\s'-]+$/u", $lastName)) {
+        $lastNameErr = "Le nom contient des caractères invalides";
     }
 
     if ($email === '') {
@@ -65,21 +67,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $roleErr = "Le rôle est requis";
     }
 
-    // Si pas d'erreurs, procéder à l'insertion
     if (!$firstNameErr && !$lastNameErr && !$emailErr && !$passwordErr && !$confirmPasswordErr && !$roleErr) {
 
         try {
-            // Vérifier si l'email existe déjà (unicité)
             $check = $pdo->prepare("SELECT id FROM users WHERE email = ?");
             $check->execute([$email]);
 
             if ($check->fetch()) {
                 $emailErr = "L'adresse e-mail existe déjà";
             } else {
-                // Hashage sécurisé du mot de passe
                 $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
-                // Insertion dans la base de données
                 $stmt = $pdo->prepare(
                     "INSERT INTO users (nom, email, password_hash, role, created_at) 
                      VALUES (?, ?, ?, ?, NOW())"
@@ -92,10 +90,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $role
                 ]);
 
-                // Régénérer le token CSRF après inscription
                 $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
-                // Redirection vers la page de connexion
                 header("Location: login.php?registered=1");
                 exit;
             }
@@ -113,36 +109,36 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plateforme de Quiz - Inscription</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <title>QODEX - Inscription</title>
     <style>
         body {
-            background: linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .password-strength {
+            height: 4px;
+            transition: all 0.3s;
         }
     </style>
 </head>
 
-<body class="min-h-screen flex items-center justify-center p-4">
+<body class="flex items-center justify-center p-4">
     <div class="w-full max-w-lg">
-        <!-- Header -->
         <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-20 h-20 bg-indigo-600 rounded-2xl mb-4">
-                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            <div class="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl mb-4 shadow-lg">
+                <svg class="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
                 </svg>
             </div>
-            <h1 class="text-2xl font-semibold text-gray-800 mb-2">QODEX</h1>
-            <p class="text-gray-600">Créez votre compte pour commencer</p>
+            <h1 class="text-3xl font-bold text-white mb-2">QODEX</h1>
+            <p class="text-white text-opacity-90">Créez votre compte pour commencer</p>
         </div>
-
-        <!-- Signup Form -->
-        <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
-            <!-- CSRF Token -->
-            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+        <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" id="registerForm"> <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
             <input type="hidden" name="role" id="role" value="etudiant">
 
-            <div class="bg-white rounded-3xl shadow-xl p-8">
-                <!-- User Type Selection -->
+            <div class="bg-white rounded-3xl shadow-2xl p-8">
                 <div class="mb-6">
                     <label class="block text-gray-700 font-medium mb-3">Je suis</label>
                     <div class="grid grid-cols-2 gap-4">
@@ -154,20 +150,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         </button>
                         <button type="button" id="teacherBtn" class="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-300 bg-white text-gray-600 rounded-xl font-medium hover:bg-gray-50 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
                             </svg>
                             Enseignant
                         </button>
                     </div>
                     <?php if ($roleErr): ?>
-                    <span class="text-red-600 text-sm mt-1 block"><?php echo $roleErr; ?></span>
+                        <span class="text-red-600 text-sm mt-1 block"><?php echo $roleErr; ?></span>
                     <?php endif; ?>
                 </div>
-
-                <!-- Name Fields -->
                 <div class="grid grid-cols-2 gap-4 mb-5">
                     <div>
-                        <label for="firstName" class="block text-gray-700 font-medium mb-2">Prénom</label>
+                        <label for="firstName" class="block text-gray-700 font-medium mb-2">Prénom *</label>
                         <input
                             type="text"
                             id="firstName"
@@ -176,11 +170,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             placeholder="Mohamed"
                             class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all <?php echo $firstNameErr ? 'border-red-500' : ''; ?>">
                         <?php if ($firstNameErr): ?>
-                        <span class="text-red-600 text-sm mt-1 block"><?php echo $firstNameErr; ?></span>
+                            <span class="text-red-600 text-sm mt-1 block"><?php echo $firstNameErr; ?></span>
                         <?php endif; ?>
                     </div>
                     <div>
-                        <label for="lastName" class="block text-gray-700 font-medium mb-2">Nom</label>
+                        <label for="lastName" class="block text-gray-700 font-medium mb-2">Nom *</label>
                         <input
                             type="text"
                             id="lastName"
@@ -189,14 +183,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             placeholder="Boudlal"
                             class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all <?php echo $lastNameErr ? 'border-red-500' : ''; ?>">
                         <?php if ($lastNameErr): ?>
-                        <span class="text-red-600 text-sm mt-1 block"><?php echo $lastNameErr; ?></span>
+                            <span class="text-red-600 text-sm mt-1 block"><?php echo $lastNameErr; ?></span>
                         <?php endif; ?>
                     </div>
                 </div>
-
-                <!-- Email Field -->
                 <div class="mb-5">
-                    <label for="email" class="block text-gray-700 font-medium mb-2">Adresse email</label>
+                    <label for="email" class="block text-gray-700 font-medium mb-2">Adresse email *</label>
                     <input
                         type="email"
                         id="email"
@@ -205,13 +197,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         placeholder="votre@email.com"
                         class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all <?php echo $emailErr ? 'border-red-500' : ''; ?>">
                     <?php if ($emailErr): ?>
-                    <span class="text-red-600 text-sm mt-1 block"><?php echo $emailErr; ?></span>
+                        <span class="text-red-600 text-sm mt-1 block"><?php echo $emailErr; ?></span>
                     <?php endif; ?>
                 </div>
-
-                <!-- Password Field -->
                 <div class="mb-5">
-                    <label for="password" class="block text-gray-700 font-medium mb-2">Mot de passe</label>
+                    <label for="password" class="block text-gray-700 font-medium mb-2">Mot de passe *</label>
                     <div class="relative">
                         <input
                             type="password"
@@ -222,23 +212,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         <button
                             type="button"
                             id="togglePassword"
-                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                             </svg>
                         </button>
                     </div>
+                    <div class="mt-2">
+                        <div class="password-strength bg-gray-200 rounded-full" id="strengthBar"></div>
+                        <p class="text-xs text-gray-500 mt-1" id="strengthText">Force du mot de passe</p>
+                    </div>
                     <?php if ($passwordErr): ?>
-                    <span class="text-red-600 text-sm mt-1 block"><?php echo $passwordErr; ?></span>
+                        <span class="text-red-600 text-sm mt-1 block"><?php echo $passwordErr; ?></span>
                     <?php else: ?>
-                    <span class="text-gray-500 text-xs mt-1 block">Minimum 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre</span>
+                        <span class="text-gray-500 text-xs mt-1 block">Minimum 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre</span>
                     <?php endif; ?>
                 </div>
-
-                <!-- Confirm Password Field -->
                 <div class="mb-5">
-                    <label for="confirmPassword" class="block text-gray-700 font-medium mb-2">Confirmer le mot de passe</label>
+                    <label for="confirmPassword" class="block text-gray-700 font-medium mb-2">Confirmer le mot de passe *</label>
                     <div class="relative">
                         <input
                             type="password"
@@ -249,7 +241,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         <button
                             type="button"
                             id="toggleConfirmPassword"
-                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
@@ -257,45 +249,35 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         </button>
                     </div>
                     <?php if ($confirmPasswordErr): ?>
-                    <span class="text-red-600 text-sm mt-1 block"><?php echo $confirmPasswordErr; ?></span>
+                        <span class="text-red-600 text-sm mt-1 block"><?php echo $confirmPasswordErr; ?></span>
                     <?php endif; ?>
                 </div>
-
-                <!-- Terms and Conditions -->
                 <div class="mb-6">
                     <label class="flex items-start cursor-pointer">
-                        <input checked type="checkbox" required class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mt-1">
+                        <input type="checkbox" required class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mt-1">
                         <span class="ml-2 text-sm text-gray-700">
-                            J'accepte les <a href="#" class="text-indigo-600 hover:text-indigo-700 font-medium">conditions d'utilisation</a> et la <a href="#" class="text-indigo-600 hover:text-indigo-700 font-medium">politique de confidentialité</a>
+                            J'accepte les <a href="#" class="text-indigo-600 hover:text-indigo-700 font-medium underline">conditions d'utilisation</a> et la <a href="#" class="text-indigo-600 hover:text-indigo-700 font-medium underline">politique de confidentialité</a>
                         </span>
                     </label>
                 </div>
-
-                <!-- Submit Button -->
-                <button type="submit" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-medium hover:bg-indigo-700 transition-colors mb-6">
+                <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-medium hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 mb-6">
                     S'inscrire
                 </button>
-
-                <!-- Security Notice -->
                 <div class="flex items-start gap-3 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl">
-                    <svg class="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                    <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
                     </svg>
-                    <p>Vos données sont protégées par chiffrement SSL/TLS et vos mots de passe sont hashés avec bcrypt.</p>
+                    <p>Vos données sont protégées par chiffrement SSL/TLS et vos mots de passe sont hashés avec bcrypt (cost: 12).</p>
                 </div>
             </div>
         </form>
-
-        <!-- Login Link -->
         <div class="text-center mt-6">
-            <p class="text-gray-700">
+            <p class="text-white">
                 Vous avez déjà un compte ?
-                <a href="login.php" class="text-indigo-600 hover:text-indigo-700 font-medium">Se connecter</a>
+                <a href="login.php" class="text-white font-bold hover:underline">Se connecter</a>
             </p>
         </div>
-
-        <!-- Secure Connection -->
-        <div class="flex items-center justify-center gap-2 mt-4 text-sm text-gray-600">
+        <div class="flex items-center justify-center gap-2 mt-4 text-sm text-white text-opacity-90">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path>
             </svg>
@@ -304,7 +286,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     </div>
 
     <script>
-        // Toggle user type selection
         const studentBtn = document.getElementById('studentBtn');
         const teacherBtn = document.getElementById('teacherBtn');
         const roleInput = document.getElementById('role');
@@ -325,7 +306,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             roleInput.value = 'enseignant';
         });
 
-        // Toggle password visibility
         const togglePassword = document.getElementById('togglePassword');
         const passwordInput = document.getElementById('password');
 
@@ -334,13 +314,35 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             passwordInput.setAttribute('type', type);
         });
 
-        // Toggle confirm password visibility
         const toggleConfirmPassword = document.getElementById('toggleConfirmPassword');
         const confirmPasswordInput = document.getElementById('confirmPassword');
 
         toggleConfirmPassword.addEventListener('click', () => {
             const type = confirmPasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
             confirmPasswordInput.setAttribute('type', type);
+        });
+
+        const strengthBar = document.getElementById('strengthBar');
+        const strengthText = document.getElementById('strengthText');
+
+        passwordInput.addEventListener('input', function() {
+            const password = this.value;
+            let strength = 0;
+
+            if (password.length >= 8) strength++;
+            if (/[a-z]/.test(password)) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^a-zA-Z0-9]/.test(password)) strength++;
+
+            const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-green-500', 'bg-green-600'];
+            const texts = ['Très faible', 'Faible', 'Moyen', 'Fort', 'Très fort'];
+            const widths = ['20%', '40%', '60%', '80%', '100%'];
+
+            strengthBar.className = 'password-strength rounded-full ' + colors[strength - 1];
+            strengthBar.style.width = widths[strength - 1] || '0%';
+            strengthText.textContent = texts[strength - 1] || 'Trop court';
+            strengthText.className = 'text-xs mt-1 ' + (strength >= 3 ? 'text-green-600' : 'text-gray-500');
         });
     </script>
 
